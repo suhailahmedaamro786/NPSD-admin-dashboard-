@@ -61,11 +61,10 @@ alter table public.access_requests enable row level security;
 drop policy if exists npsd_requests_admin on public.access_requests;
 drop policy if exists npsd_requests_anon_insert on public.access_requests;
 create policy npsd_requests_admin on public.access_requests for all to authenticated using(public.is_admin()) with check(public.is_admin());
--- Registration is submitted through the server API with the service role; no anonymous table write is required.
 
 create or replace function public.approve_access_request(p_request_id uuid, p_approve boolean, p_note text default null)
 returns public.access_requests language plpgsql security definer set search_path=public as $$
-declare r public.access_requests; c public.classes; existing public.students; begin
+declare r public.access_requests; begin
  if not public.is_admin() then raise exception 'Not authorized'; end if;
  select * into r from public.access_requests where id=p_request_id for update;
  if not found then raise exception 'Request not found'; end if;
@@ -88,6 +87,15 @@ create or replace function public.set_access_request_updated_at() returns trigge
 drop trigger if exists npsd_access_requests_updated on public.access_requests;
 create trigger npsd_access_requests_updated before update on public.access_requests for each row execute function public.set_access_request_updated_at();
 
--- Allow the public registration screen to load class choices without exposing student data.
+-- Public registration needs class choices. The selected class_id is a real FK.
 drop policy if exists npsd_classes_public_read on public.classes;
 create policy npsd_classes_public_read on public.classes for select to anon using(true);
+
+-- Initial school class choices for admission session 2026-27.
+-- Admin can later add/edit sections from the dashboard.
+insert into public.classes(name,section,academic_year)
+select 'Class ' || n, 'A', '2026-27'
+from generate_series(1,12) as n
+where not exists (
+  select 1 from public.classes c where c.name='Class ' || n and c.academic_year='2026-27'
+);
