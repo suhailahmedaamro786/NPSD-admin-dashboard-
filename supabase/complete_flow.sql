@@ -83,7 +83,22 @@ declare r public.access_requests; begin
 end; $$;
 grant execute on function public.approve_access_request(uuid,boolean,text) to authenticated;
 
--- Compatibility wrapper for the admin UI, which sends 'approve'/'reject'.
+-- Compatibility wrapper: supports the admin UI RPC signature p_action + p_request_id.
+create or replace function public.approve_access_request(p_action text, p_request_id uuid)
+returns public.access_requests
+language sql
+security definer
+set search_path=public
+as $$
+  select public.approve_access_request(
+    p_request_id,
+    lower(trim(p_action)) = 'approve',
+    null
+  );
+$$;
+grant execute on function public.approve_access_request(text,uuid) to authenticated;
+
+-- Keep compatibility with clients that send the arguments in request-id/action order.
 create or replace function public.approve_access_request(p_request_id uuid, p_action text)
 returns public.access_requests
 language sql
