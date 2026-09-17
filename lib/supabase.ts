@@ -8,5 +8,15 @@ export function supabase(): SupabaseClient<any> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) throw new Error('Missing Supabase environment variables');
-  return createBrowserClient(url, key);
+
+  const client = createBrowserClient(url, key);
+  const originalSignOut = client.auth.signOut.bind(client.auth);
+  client.auth.signOut = async (...args: Parameters<typeof client.auth.signOut>) => {
+    const result = await originalSignOut(...args);
+    if (!result.error && typeof window !== 'undefined') {
+      window.location.assign('/');
+    }
+    return result;
+  };
+  return client;
 }
