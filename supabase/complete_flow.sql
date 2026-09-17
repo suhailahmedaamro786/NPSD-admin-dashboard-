@@ -83,16 +83,28 @@ declare r public.access_requests; begin
 end; $$;
 grant execute on function public.approve_access_request(uuid,boolean,text) to authenticated;
 
+-- Compatibility wrapper for the admin UI, which sends 'approve'/'reject'.
+create or replace function public.approve_access_request(p_request_id uuid, p_action text)
+returns public.access_requests
+language sql
+security definer
+set search_path=public
+as $$
+  select public.approve_access_request(
+    p_request_id,
+    lower(trim(p_action)) = 'approve',
+    null
+  );
+$$;
+grant execute on function public.approve_access_request(uuid,text) to authenticated;
+
 create or replace function public.set_access_request_updated_at() returns trigger language plpgsql as $$ begin new.updated_at=now(); return new; end; $$;
 drop trigger if exists npsd_access_requests_updated on public.access_requests;
 create trigger npsd_access_requests_updated before update on public.access_requests for each row execute function public.set_access_request_updated_at();
 
--- Public registration needs class choices. The selected class_id is a real FK.
 drop policy if exists npsd_classes_public_read on public.classes;
 create policy npsd_classes_public_read on public.classes for select to anon using(true);
 
--- Initial school class choices for admission session 2026-27.
--- Admin can later add/edit sections from the dashboard.
 insert into public.classes(name,section,academic_year)
 select 'Class ' || n, 'A', '2026-27'
 from generate_series(1,12) as n
