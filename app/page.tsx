@@ -1,132 +1,162 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import type React from 'react';
+import { Bell, BookOpen, CalendarCheck, CheckCircle2, ChevronRight, GraduationCap, LayoutDashboard, LogOut, Megaphone, RefreshCw, Search, ShieldCheck, UserCheck, Users, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 const ADMIN_EMAIL = 'suhailahmedaamro786@gmail.com';
-type TabName = 'requests' | 'students' | 'parents' | 'classes' | 'attendance' | 'exams' | 'results' | 'announcements' | 'cards';
-
-type Student = { id: string; student_id: string; full_name: string; father_name?: string | null; active?: boolean; class_id?: string | null; classes?: { name: string; section: string }[] | null };
+type TabName = 'overview' | 'requests' | 'students' | 'parents' | 'classes' | 'attendance' | 'exams' | 'results' | 'announcements' | 'cards';
+type Student = { id: string; student_id: string; full_name: string; father_name?: string | null; active?: boolean; class_id?: string | null; classes?: { name: string; section: string }[] | { name: string; section: string } | null };
 type ClassRow = { id: string; name: string; section: string; academic_year?: string | null };
+
+function classLabel(value: any) {
+  const item = Array.isArray(value) ? value[0] : value;
+  return item?.name ? `${item.name}${item.section ? ` — ${item.section}` : ''}` : '—';
+}
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { supabase().auth.getUser().then(({ data }) => { setUser(data.user); setLoading(false); }); }, []);
-  if (loading) return <main className="wrap"><div className="card">Loading admin dashboard…</div></main>;
+  if (loading) return <main className="shell"><div className="loadingCard">Loading NPSD Admin…</div></main>;
   if (!user) return <Login />;
   if ((user.email || '').toLowerCase() !== ADMIN_EMAIL) return <AccessDenied />;
   return <Admin user={user} />;
 }
 
 function Admin({ user }: { user: any }) {
-  const [tab, setTab] = useState<TabName>('requests');
+  const [tab, setTab] = useState<TabName>('overview');
   const [requests, setRequests] = useState<any[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [parents, setParents] = useState<any[]>([]);
   const [classes, setClasses] = useState<ClassRow[]>([]);
-  const [busy, setBusy] = useState(true);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [filter, setFilter] = useState('pending');
-  const [query, setQuery] = useState('');
   const [attendance, setAttendance] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
   const [results, setResults] = useState<any[]>([]);
   const [announcements, setAnnouncements] = useState<any[]>([]);
+  const [busy, setBusy] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [filter, setFilter] = useState('pending');
+  const [query, setQuery] = useState('');
   const [cardStudent, setCardStudent] = useState('');
   const [cardToken, setCardToken] = useState('');
 
-  async function loadCore() {
-    setBusy(true); setError('');
-    const s = supabase();
-    const [r, st, pa, cl] = await Promise.all([
-      s.from('access_requests').select('id,student_id,full_name,father_name,guardian_name,dob,gender,phone,city,admission_session,class_id,status,created_at,admin_note,classes(name,section)').order('created_at', { ascending: false }),
-      s.from('students').select('id,student_id,full_name,father_name,active,class_id,classes(name,section)').order('full_name'),
-      s.from('parents').select('id,full_name,phone,approved').order('full_name'),
-      s.from('classes').select('id,name,section,academic_year').order('name').order('section'),
-    ]);
-    const firstError = r.error || st.error || pa.error || cl.error;
-    if (firstError) setError(firstError.message);
-    setRequests(r.data || []); setStudents(st.data || []); setParents(pa.data || []); setClasses(cl.data || []);
-    setBusy(false);
+  async function loadData(silent = false) {
+    if (silent) setRefreshing(true); else setBusy(true);
+    setError('');
+    try {
+      const { data: sessionData } = await supabase().auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Admin session expired. Please sign in again.');
+      const response = await fetch('/api/admin-data', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to load admin data.');
+      setRequests(payload.requests || []); setStudents(payload.students || []); setParents(payload.parents || []); setClasses(payload.classes || []);
+      setAttendance(payload.attendance || []); setExams(payload.exams || []); setResults(payload.results || []); setAnnouncements(payload.announcements || []);
+      if (payload.errors?.length) setError(payload.errors.join(' • '));
+    } catch (e: any) { setError(e?.message || 'Unable to load dashboard.'); }
+    finally { setBusy(false); setRefreshing(false); }
   }
 
-  async function loadOperations() {
-    const s = supabase();
-    const [a, e, r, n] = await Promise.all([
-      s.from('attendance').select('id,student_id,attendance_date,status,note').order('attendance_date', { ascending: false }).limit(100),
-      s.from('exams').select('id,name,exam_date,class_id,total_marks,published').order('exam_date', { ascending: false }).limit(100),
-      s.from('results').select('id,student_id,exam_id,subject,marks_obtained,total_marks,obtained,total,grade,position,pass,published').order('id', { ascending: false }).limit(200),
-      s.from('announcements').select('id,title,body,published,published_at,target_class_id,created_at').order('created_at', { ascending: false }).limit(100),
-    ]);
-    setAttendance(a.data || []); setExams(e.data || []); setResults(r.data || []); setAnnouncements(n.data || []);
-    const err = a.error || e.error || r.error || n.error;
-    if (err) setError(err.message);
-  }
-
-  useEffect(() => { void Promise.all([loadCore(), loadOperations()]); }, []);
+  useEffect(() => { void loadData(); }, []);
 
   async function reviewRequest(id: string, action: 'approve' | 'reject') {
     setNotice(''); setError('');
     const { data, error } = await supabase().rpc('approve_access_request', { p_request_id: id, p_action: action });
     if (error) { setError(error.message); return; }
     setNotice(data?.message || `Request ${action}d.`);
-    await Promise.all([loadCore(), loadOperations()]);
+    await loadData(true);
   }
 
   async function issueCard(studentId: string) {
     setNotice(''); setError(''); setCardToken('');
     const { data, error } = await supabase().rpc('issue_student_card', { p_student_id: studentId });
     if (error) { setError(error.message); return; }
-    setCardToken(data?.token || '');
-    setNotice('Student card issued successfully.');
+    setCardToken(data?.token || ''); setNotice('Student card issued successfully.');
   }
 
   async function togglePublished(table: 'exams' | 'results' | 'announcements', id: string, published: boolean) {
+    setError('');
     const { error } = await supabase().from(table).update({ published: !published }).eq('id', id);
     if (error) { setError(error.message); return; }
-    await loadOperations();
+    await loadData(true);
   }
 
+  const pending = requests.filter((x) => x.status === 'pending').length;
+  const approved = requests.filter((x) => x.status === 'approved').length;
+  const rejected = requests.filter((x) => x.status === 'rejected').length;
   const filteredRequests = useMemo(() => {
     const q = query.trim().toLowerCase();
     return requests.filter((x) => (!filter || x.status === filter) && (!q || [x.full_name, x.student_id, x.phone, x.city].some((v) => String(v || '').toLowerCase().includes(q))));
   }, [requests, filter, query]);
 
-  return (
-    <main className="wrap">
-      <header className="topbar"><div><h1>NPSD Admin Dashboard</h1><p>Manage students, approvals, academics and communication.</p></div><button onClick={() => void supabase().auth.signOut()}>Sign out</button></header>
-      {error && <div className="alert error">{error}</div>}
-      {notice && <div className="alert success">{notice}</div>}
-      <nav className="tabs">
-        {(['requests','students','parents','classes','attendance','exams','results','announcements','cards'] as TabName[]).map((name) => <button key={name} className={tab === name ? 'active' : ''} onClick={() => setTab(name)}>{name}</button>)}
-      </nav>
-      <section className="card">
-        {busy ? <p>Loading dashboard…</p> : <>
-          {tab === 'requests' && <><div className="toolbar"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, student ID, phone…" /><select value={filter} onChange={(e) => setFilter(e.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="">All</option></select></div><div className="tableWrap"><table><thead><tr><th>Name</th><th>Student ID</th><th>Class</th><th>Phone</th><th>Status</th><th>Action</th></tr></thead><tbody>{filteredRequests.map((x) => <tr key={x.id}><td>{x.full_name}</td><td>{x.student_id || '—'}</td><td>{x.classes?.name || '—'} {x.classes?.section || ''}</td><td>{x.phone}</td><td>{x.status}</td><td>{x.status === 'pending' && <><button onClick={() => void reviewRequest(x.id,'approve')}>Approve</button> <button onClick={() => void reviewRequest(x.id,'reject')}>Reject</button></>}</td></tr>)}</tbody></table></div></>}
-          {tab === 'students' && <List title="Students" rows={students.map((x) => ({...x, class_name: x.classes?.[0] ? `${x.classes[0].name} ${x.classes[0].section}` : '—'}))} />}
-          {tab === 'parents' && <List title="Parents" rows={parents} />}
-          {tab === 'classes' && <List title="Classes" rows={classes} />}
-          {tab === 'attendance' && <List title="Attendance" rows={attendance} />}
-          {tab === 'exams' && <List title="Exams" rows={exams} actions={(x) => <button onClick={() => void togglePublished('exams', x.id, x.published)}>{x.published ? 'Unpublish' : 'Publish'}</button>} />}
-          {tab === 'results' && <List title="Results" rows={results} actions={(x) => <button onClick={() => void togglePublished('results', x.id, x.published)}>{x.published ? 'Unpublish' : 'Publish'}</button>} />}
-          {tab === 'announcements' && <List title="Announcements" rows={announcements} actions={(x) => <button onClick={() => void togglePublished('announcements', x.id, x.published)}>{x.published ? 'Unpublish' : 'Publish'}</button>} />}
-          {tab === 'cards' && <div className="stack"><select value={cardStudent} onChange={(e) => setCardStudent(e.target.value)}><option value="">Select student</option>{students.map((x) => <option key={x.id} value={x.id}>{x.full_name} — {x.student_id}</option>)}</select><button disabled={!cardStudent} onClick={() => void issueCard(cardStudent)}>Issue / Generate Card</button>{cardToken && <div className="card"><strong>Card token:</strong> {cardToken}</div>}</div>}
-        </>}
-      </section>
-    </main>
-  );
+  const nav: { id: TabName; label: string; icon: React.ReactNode; count?: number }[] = [
+    { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={17} /> },
+    { id: 'requests', label: 'Requests', icon: <UserCheck size={17} />, count: pending },
+    { id: 'students', label: 'Students', icon: <GraduationCap size={17} />, count: students.length },
+    { id: 'parents', label: 'Parents', icon: <Users size={17} />, count: parents.length },
+    { id: 'classes', label: 'Classes', icon: <BookOpen size={17} />, count: classes.length },
+    { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={17} /> },
+    { id: 'exams', label: 'Exams', icon: <BookOpen size={17} /> },
+    { id: 'results', label: 'Results', icon: <CheckCircle2 size={17} /> },
+    { id: 'announcements', label: 'Announcements', icon: <Megaphone size={17} /> },
+    { id: 'cards', label: 'Student Cards', icon: <ShieldCheck size={17} /> },
+  ];
+
+  return <main className="appShell">
+    <aside className="sidebar">
+      <div className="brand"><div className="brandMark">N</div><div><strong>NPSD</strong><span>Admin Portal</span></div></div>
+      <div className="sideLabel">WORKSPACE</div>
+      <nav>{nav.map((item) => <button key={item.id} className={tab === item.id ? 'sideItem active' : 'sideItem'} onClick={() => setTab(item.id)}>{item.icon}<span>{item.label}</span>{item.count !== undefined && <b>{item.count}</b>}</button>)}</nav>
+      <div className="sideBottom"><div className="secure"><ShieldCheck size={16}/><span>Secure admin session</span></div><button className="signOut" onClick={() => void supabase().auth.signOut()}><LogOut size={16}/> Sign out</button></div>
+    </aside>
+
+    <section className="mainArea">
+      <header className="header"><div><p className="eyebrow">NOBLE PUBLIC SCHOOL DADU</p><h1>{nav.find((x) => x.id === tab)?.label || 'Dashboard'}</h1><p className="sub">Manage students, approvals, academics and communication.</p></div><div className="headerActions"><button className="iconButton" title="Refresh" onClick={() => void loadData(true)} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''}/></button><div className="adminAvatar">A</div><div className="adminInfo"><strong>Administrator</strong><span>{user.email}</span></div></div></header>
+      {error && <div className="alert error"><XCircle size={18}/><span>{error}</span><button onClick={() => setError('')}>×</button></div>}
+      {notice && <div className="alert success"><CheckCircle2 size={18}/><span>{notice}</span><button onClick={() => setNotice('')}>×</button></div>}
+
+      {busy ? <div className="loadingCard"><RefreshCw className="spin" size={22}/> Loading dashboard data…</div> : <>
+        {tab === 'overview' && <Overview pending={pending} approved={approved} rejected={rejected} students={students.length} requests={requests} setTab={setTab} />}
+        {tab === 'requests' && <RequestView rows={filteredRequests} filter={filter} setFilter={setFilter} query={query} setQuery={setQuery} reviewRequest={reviewRequest} />}
+        {tab === 'students' && <DataTable title="Students" subtitle="Registered and approved students" rows={students.map((x) => ({ Student: x.full_name, 'Student ID': x.student_id, Father: x.father_name || '—', Class: classLabel(x.classes), Status: x.active === false ? 'Inactive' : 'Active' }))} />}
+        {tab === 'parents' && <DataTable title="Parents" subtitle="Parent accounts and approval status" rows={parents.map((x) => ({ Name: x.full_name, Phone: x.phone || '—', Status: x.approved ? 'Approved' : 'Pending' }))} />}
+        {tab === 'classes' && <DataTable title="Classes" subtitle="Academic classes and sections" rows={classes.map((x) => ({ Class: x.name, Section: x.section, 'Academic Year': x.academic_year || '—' }))} />}
+        {tab === 'attendance' && <DataTable title="Attendance" subtitle="Latest 100 attendance records" rows={attendance.map((x) => ({ Student: x.student_id, Date: x.attendance_date, Status: x.status }))} />}
+        {tab === 'exams' && <DataTable title="Exams" subtitle="Exam schedule and publishing" rows={exams.map((x) => ({ Name: x.name, Date: x.exam_date, 'Total Marks': x.total_marks, Published: x.published ? 'Yes' : 'No' }))} actions={(x) => <button className="smallBtn" onClick={() => { const row = exams.find((e) => e.name === x.Name && e.exam_date === x.Date); if (row) void togglePublished('exams', row.id, row.published); }}>{x.Published === 'Yes' ? 'Unpublish' : 'Publish'}</button>} />}
+        {tab === 'results' && <DataTable title="Results" subtitle="Student results and publishing" rows={results.map((x) => ({ Student: x.student_id, Subject: x.subject, Marks: `${x.marks_obtained ?? x.obtained ?? '—'} / ${x.total_marks ?? x.total ?? '—'}`, Grade: x.grade || '—', Published: x.published ? 'Yes' : 'No' }))} />}
+        {tab === 'announcements' && <DataTable title="Announcements" subtitle="School communication" rows={announcements.map((x) => ({ Title: x.title, Published: x.published ? 'Yes' : 'No', Date: x.created_at ? new Date(x.created_at).toLocaleDateString() : '—' }))} />}
+        {tab === 'cards' && <CardView students={students} cardStudent={cardStudent} setCardStudent={setCardStudent} issueCard={issueCard} cardToken={cardToken} />}
+      </>}
+    </section>
+  </main>;
 }
 
-function List({ title, rows, actions }: { title: string; rows: any[]; actions?: (row: any) => React.ReactNode }) {
-  return <div><h2>{title}</h2><div className="tableWrap"><table><thead><tr>{Object.keys(rows[0] || {id:'',name:''}).slice(0,8).map((k) => <th key={k}>{k}</th>)}{actions && <th>Action</th>}</tr></thead><tbody>{rows.map((row, i) => <tr key={row.id || i}>{Object.entries(row).slice(0,8).map(([k,v]) => <td key={k}>{typeof v === 'object' ? JSON.stringify(v) : String(v ?? '—')}</td>)}{actions && <td>{actions(row)}</td>}</tr>)}</tbody></table></div></div>;
+function Overview({ pending, approved, rejected, students, requests, setTab }: any) {
+  return <div className="content"><div className="statsGrid"><Stat icon={<UserCheck/>} label="Pending Requests" value={pending} tone="amber" /><Stat icon={<GraduationCap/>} label="Students" value={students} tone="blue" /><Stat icon={<CheckCircle2/>} label="Approved" value={approved} tone="green" /><Stat icon={<XCircle/>} label="Rejected" value={rejected} tone="red" /></div>
+    <div className="sectionGrid"><section className="panel"><div className="panelHead"><div><h2>Recent applications</h2><p>Latest student registration requests</p></div><button className="textBtn" onClick={() => setTab('requests')}>View all <ChevronRight size={15}/></button></div><div className="recentList">{requests.slice(0, 6).map((x: any) => <div className="recentRow" key={x.id}><div className="personAvatar">{String(x.full_name || '?').charAt(0).toUpperCase()}</div><div className="person"><strong>{x.full_name}</strong><span>{x.student_id || 'ID pending'} · {classLabel(x.classes)}</span></div><Status value={x.status}/></div>)}{!requests.length && <Empty text="No registration requests yet."/>}</div></section>
+      <section className="panel quick"><div className="panelHead"><div><h2>Quick actions</h2><p>Common admin tasks</p></div></div><button onClick={() => setTab('requests')}><UserCheck/><span><strong>Review applications</strong><small>Approve or reject new requests</small></span><ChevronRight/></button><button onClick={() => setTab('cards')}><ShieldCheck/><span><strong>Issue student card</strong><small>Generate a digital card token</small></span><ChevronRight/></button><button onClick={() => setTab('announcements')}><Bell/><span><strong>Announcements</strong><small>Manage school communication</small></span><ChevronRight/></button></section></div></div>;
 }
 
-function Login() {
-  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState('');
-  async function submit(e: React.FormEvent) { e.preventDefault(); setError(''); const { error } = await supabase().auth.signInWithPassword({ email, password }); if (error) setError(error.message); else window.location.reload(); }
-  return <main className="wrap"><div className="card narrow"><h1>Admin Login</h1><form onSubmit={submit}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Admin email" required /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required /><button type="submit">Sign in</button>{error && <p className="errorText">{error}</p>}</form></div></main>;
+function RequestView({ rows, filter, setFilter, query, setQuery, reviewRequest }: any) {
+  return <div className="content"><div className="pageIntro"><div><h2>Registration requests</h2><p>Review applications submitted from the student portal.</p></div><div className="filterPills">{[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['','All']].map(([v,l]) => <button key={v} className={filter === v ? 'selected' : ''} onClick={() => setFilter(v)}>{l}</button>)}</div></div><div className="tableToolbar"><div className="searchBox"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, student ID, phone or city…" /></div><span className="resultCount">{rows.length} request{rows.length === 1 ? '' : 's'}</span></div><div className="dataPanel"><div className="tableWrap"><table><thead><tr><th>Applicant</th><th>Student ID</th><th>Class</th><th>Contact</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.map((x: any) => <tr key={x.id}><td><div className="tablePerson"><div className="personAvatar small">{String(x.full_name || '?').charAt(0).toUpperCase()}</div><div><strong>{x.full_name}</strong><small>{x.father_name || x.guardian_name || 'Guardian not provided'}</small></div></div></td><td><strong className="mono">{x.student_id || '—'}</strong></td><td>{classLabel(x.classes)}</td><td><strong>{x.phone || '—'}</strong><small>{x.city || ''}</small></td><td><Status value={x.status}/></td><td>{x.status === 'pending' ? <div className="rowActions"><button className="approveBtn" onClick={() => void reviewRequest(x.id, 'approve')}><CheckCircle2 size={14}/> Approve</button><button className="rejectBtn" onClick={() => void reviewRequest(x.id, 'reject')}><XCircle size={14}/> Reject</button></div> : <span className="muted">Reviewed</span>}</td></tr>)}</tbody></table>{!rows.length && <Empty text="No requests match this filter."/>}</div></div></div>;
 }
 
-function AccessDenied() { return <main className="wrap"><div className="card"><h1>Access denied</h1><p>This account is not authorized for the NPSD admin dashboard.</p></div></main>; }
+function DataTable({ title, subtitle, rows, actions }: { title: string; subtitle: string; rows: any[]; actions?: (row: any) => React.ReactNode }) {
+  const columns = Object.keys(rows[0] || { Name: '' });
+  return <div className="content"><div className="pageIntro"><div><h2>{title}</h2><p>{subtitle}</p></div></div><div className="dataPanel"><div className="tableWrap"><table><thead><tr>{columns.map((c) => <th key={c}>{c}</th>)}{actions && <th>Action</th>}</tr></thead><tbody>{rows.map((row, i) => <tr key={row.id || i}>{columns.map((c) => <td key={c}>{c === 'Status' || c === 'Published' ? <Status value={String(row[c])} /> : String(row[c] ?? '—')}</td>)}{actions && <td>{actions(row)}</td>}</tr>)}</tbody></table>{!rows.length && <Empty text={`No ${title.toLowerCase()} found.`}/>}</div></div></div>;
+}
+
+function CardView({ students, cardStudent, setCardStudent, issueCard, cardToken }: any) {
+  return <div className="content"><div className="pageIntro"><div><h2>Digital student cards</h2><p>Issue a card token for an approved student.</p></div></div><div className="cardGenerator"><div className="generatorIcon"><ShieldCheck size={28}/></div><h3>Generate student card</h3><p>Select a student to issue their card.</p><select value={cardStudent} onChange={(e) => setCardStudent(e.target.value)}><option value="">Select student</option>{students.map((x: Student) => <option key={x.id} value={x.id}>{x.full_name} — {x.student_id}</option>)}</select><button className="primaryBtn" disabled={!cardStudent} onClick={() => void issueCard(cardStudent)}>Issue / Generate Card</button>{cardToken && <div className="tokenBox"><strong>Card issued</strong><span>{cardToken}</span></div>}</div></div>;
+}
+
+function Stat({ icon, label, value, tone }: any) { return <div className={`statCard ${tone}`}><div className="statIcon">{icon}</div><div><span>{label}</span><strong>{value}</strong></div></div>; }
+function Status({ value }: { value: string }) { const v = value.toLowerCase(); return <span className={`status ${v.includes('approved') || v === 'active' || v === 'yes' ? 'green' : v.includes('reject') || v === 'inactive' || v === 'no' ? 'red' : v.includes('pending') ? 'amber' : 'neutral'}`}>{value}</span>; }
+function Empty({ text }: { text: string }) { return <div className="empty"><Search size={22}/><p>{text}</p></div>; }
+
+function Login() { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); async function submit(e: React.FormEvent) { e.preventDefault(); setError(''); const { error } = await supabase().auth.signInWithPassword({ email, password }); if (error) setError(error.message); else window.location.reload(); } return <main className="authPage"><div className="authCard"><div className="authLogo">N</div><p className="eyebrow">NPSD ADMINISTRATION</p><h1>Welcome back</h1><p className="sub">Sign in to manage the school portal.</p><form onSubmit={submit}><label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Admin email" required /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required /></label><button className="primaryBtn" type="submit">Sign in securely</button>{error && <p className="loginError">{error}</p>}</form></div></main>; }
+function AccessDenied() { return <main className="authPage"><div className="authCard"><div className="authLogo">!</div><h1>Access denied</h1><p className="sub">This account is not authorized for the NPSD admin dashboard.</p></div></main>; }
