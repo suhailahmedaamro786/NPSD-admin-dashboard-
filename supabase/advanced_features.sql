@@ -32,13 +32,15 @@ alter table public.exams add column if not exists total_marks numeric;
 alter table public.exams add column if not exists published boolean not null default false;
 alter table public.exams add column if not exists created_by uuid references auth.users(id) on delete set null;
 
+alter table public.results add column if not exists subject text;
 alter table public.results add column if not exists marks_obtained numeric;
 alter table public.results add column if not exists total_marks numeric;
 alter table public.results add column if not exists pass boolean;
 alter table public.results add column if not exists created_at timestamptz not null default now();
 alter table public.results add column if not exists updated_at timestamptz not null default now();
+alter table public.results add column if not exists published boolean not null default false;
 
--- Backfill modern result column names when the legacy columns exist.
+-- Backfill modern result column names when legacy columns exist.
 do $$
 begin
   if exists (select 1 from information_schema.columns where table_schema='public' and table_name='results' and column_name='obtained') then
@@ -69,6 +71,7 @@ alter table public.subjects add column if not exists created_at timestamptz not 
 -- ------------------------------------------------------------
 -- 5. Announcements enhancements
 -- ------------------------------------------------------------
+alter table public.announcements add column if not exists body text;
 alter table public.announcements add column if not exists published_at timestamptz;
 alter table public.announcements add column if not exists target_class_id uuid references public.classes(id) on delete set null;
 alter table public.announcements add column if not exists created_by uuid references auth.users(id) on delete set null;
@@ -91,7 +94,6 @@ create unique index if not exists student_cards_qr_hash_uidx
   on public.student_cards(qr_token_hash)
   where qr_token_hash is not null;
 
--- Admin-only card issuance. The raw token is returned once; only its hash is stored.
 create or replace function public.issue_student_card(p_student_id uuid)
 returns text
 language plpgsql
@@ -119,7 +121,6 @@ $$;
 
 grant execute on function public.issue_student_card(uuid) to authenticated;
 
--- Public verification returns only non-sensitive card/student information.
 create or replace function public.verify_student_card(p_token text)
 returns table(
   student_id uuid,
@@ -213,7 +214,6 @@ select
 -- ------------------------------------------------------------
 alter table public.student_cards enable row level security;
 
--- Do not expose QR hashes through normal client SELECT policies.
 drop policy if exists student_cards_self on public.student_cards;
 create policy student_cards_self on public.student_cards
 for select to authenticated
@@ -233,7 +233,6 @@ using (
   or public.is_admin()
 );
 
--- Admin operational write policies.
 drop policy if exists admin_attendance_all on public.attendance;
 create policy admin_attendance_all on public.attendance
 for all to authenticated using(public.is_admin()) with check(public.is_admin());
@@ -250,11 +249,9 @@ drop policy if exists admin_announcements_all on public.announcements;
 create policy admin_announcements_all on public.announcements
 for all to authenticated using(public.is_admin()) with check(public.is_admin());
 
--- Helpful indexes for dashboard queries.
 create index if not exists students_class_active_idx on public.students(class_id, active);
 create index if not exists parent_links_parent_approved_idx on public.parent_student_links(parent_id, approved);
 
--- Verification queries
 select name, section, academic_year, name || '-' || section as class_label
 from public.classes
 where academic_year='2026-27'
