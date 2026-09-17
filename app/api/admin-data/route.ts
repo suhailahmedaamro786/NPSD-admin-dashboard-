@@ -6,15 +6,22 @@ const ADMIN_EMAIL = 'suhailahmedaamro786@gmail.com';
 export async function GET(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return NextResponse.json({ error: 'Supabase server configuration is missing.' }, { status: 500 });
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const dbKey = serviceKey || publishableKey;
+
+  if (!url || !dbKey) {
+    return NextResponse.json({ error: 'Supabase server configuration is missing.' }, { status: 500 });
+  }
 
   const token = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
   if (!token) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
 
-  const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const admin = createClient(url, dbKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: userData, error: userError } = await admin.auth.getUser(token);
   const email = userData.user?.email?.toLowerCase();
-  if (userError || !userData.user || email !== ADMIN_EMAIL) return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+  if (userError || !userData.user || email !== ADMIN_EMAIL) {
+    return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+  }
 
   const [requests, students, parents, classes, attendance, exams, results, announcements] = await Promise.all([
     admin.from('access_requests').select('id,student_id,full_name,father_name,guardian_name,dob,gender,phone,city,admission_session,class_id,status,created_at,admin_note,classes(name,section)').order('created_at', { ascending: false }),
