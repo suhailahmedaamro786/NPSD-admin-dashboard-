@@ -128,8 +128,11 @@ export async function POST(request: NextRequest) {
       if (authUser?.user) userId = authUser.user.id;
     }
 
+    // IMPORTANT: create/update the student row with user_id=NULL first.
+    // This prevents a stale/deleted auth user reference from tripping the
+    // students_user_id_fkey constraint during admission approval.
     const studentPayload = {
-      user_id: userId,
+      user_id: null,
       student_id: admission.student_id,
       full_name: admission.full_name,
       father_name: admission.father_name,
@@ -149,24 +152,44 @@ export async function POST(request: NextRequest) {
       email: admission.email,
     };
 
+    // Clear any legacy user_id on an existing student before the upsert.
+    const { error: clearUserError } = await admin
+      .from('students')
+      .update({ user_id: null })
+      .eq('student_id', admission.student_id);
+
+    if (clearUserError) throw clearUserError;
+
     const { error: studentError } = await admin
       .from('students')
       .upsert(studentPayload, { onConflict: 'student_id' });
 
     if (studentError) throw studentError;
 
+    // Re-link only when Supabase Auth confirmed that the user actually exists.
+    // If the legacy FK is unhealthy, keep the student approved with user_id NULL
+    // instead of blocking admission approval.
+    let loginLinked = false;
     if (userId) {
-      const { error: profileError } = await admin
-        .from('profiles')
-        .update({
-          full_name: admission.full_name,
-          role: 'student',
-          approved: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
+      const { error: linkError } = await admin
+        .from('students')
+        .update({ user_id: userId })
+        .eq('student_id', admission.student_id);
 
-      if (profileError) throw profileError;
+      if (!linkError) {
+        loginLinked = true;
+        const { error: profileError } = await admin
+          .from('profiles')
+          .update({
+            full_name: admission.full_name,
+            role: 'student',
+            approved: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', userId);
+
+        if (profileError) throw profileError;
+      }
     }
 
     const { data: updated, error: updateError } = await admin
