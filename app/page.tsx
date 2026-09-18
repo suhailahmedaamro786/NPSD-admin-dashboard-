@@ -6,7 +6,7 @@ import { Bell, BookOpen, CalendarCheck, CheckCircle2, ChevronRight, GraduationCa
 import { supabase } from '../lib/supabase';
 
 const ADMIN_EMAIL = 'suhailahmedaamro786@gmail.com';
-type TabName = 'overview' | 'requests' | 'students' | 'parents' | 'classes' | 'teachers' | 'attendance' | 'exams' | 'results' | 'announcements' | 'cards';
+type TabName = 'overview' | 'requests' | 'students' | 'classes' | 'teachers' | 'attendance' | 'exams' | 'results' | 'announcements' | 'cards';
 type Student = { id: string; student_id: string; full_name: string; father_name?: string | null; active?: boolean; class_id?: string | null; classes?: { name: string; section: string }[] | { name: string; section: string } | null };
 type ClassRow = { id: string; name: string; section: string; academic_year?: string | null };
 
@@ -29,7 +29,6 @@ function Admin({ user }: { user: any }) {
   const [tab, setTab] = useState<TabName>('overview');
   const [requests, setRequests] = useState<any[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  const [parents, setParents] = useState<any[]>([]);
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [attendance, setAttendance] = useState<any[]>([]);
   const [exams, setExams] = useState<any[]>([]);
@@ -55,7 +54,7 @@ function Admin({ user }: { user: any }) {
       const response = await fetch('/api/admin-data', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to load admin data.');
-      setRequests(payload.requests || []); setStudents(payload.students || []); setParents(payload.parents || []); setClasses((payload.classes || []).slice().sort((a: ClassRow, b: ClassRow) => { const n = (v: string) => { const m = String(v || '').match(/(\\d+)/); return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER; }; return n(a.name) - n(b.name) || String(a.section || '').localeCompare(String(b.section || '')); }));
+      setRequests(payload.requests || []); setStudents(payload.students || []); setClasses((payload.classes || []).slice().sort((a: ClassRow, b: ClassRow) => { const n = (v: string) => { const m = String(v || '').match(/(\\d+)/); return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER; }; return n(a.name) - n(b.name) || String(a.section || '').localeCompare(String(b.section || '')); }));
       setAttendance(payload.attendance || []); setExams(payload.exams || []); setResults(payload.results || []); setAnnouncements(payload.announcements || []);
       if (payload.errors?.length) setError(payload.errors.join(' • '));
     } catch (e: any) { setError(e?.message || 'Unable to load dashboard.'); }
@@ -66,9 +65,9 @@ function Admin({ user }: { user: any }) {
 
   async function reviewRequest(id: string, action: 'approve' | 'reject') {
     setNotice(''); setError('');
-    const { data, error } = await supabase().rpc('approve_access_request', { p_request_id: id, p_action: action });
+    const { data, error } = await supabase().rpc('approve_access_request', { p_request_id: id, p_approve: action === 'approve', p_note: null });
     if (error) { setError(error.message); return; }
-    setNotice(data?.message || `Request ${action}d.`);
+    setNotice(`Request ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
     await loadData(true);
   }
 
@@ -76,7 +75,7 @@ function Admin({ user }: { user: any }) {
     setNotice(''); setError(''); setCardToken('');
     const { data, error } = await supabase().rpc('issue_student_card', { p_student_id: studentId });
     if (error) { setError(error.message); return; }
-    setCardToken(data?.token || ''); setNotice('Student card issued successfully.');
+    setCardToken(typeof data === 'string' ? data : data?.token || ''); setNotice('Student card issued successfully.');
   }
 
   async function togglePublished(table: 'exams' | 'results' | 'announcements', id: string, published: boolean) {
@@ -149,7 +148,7 @@ function RequestView({ rows, filter, setFilter, query, setQuery, reviewRequest, 
  return <div className="content"><div className="pageIntro"><div><h2>Admission requests</h2><p>Every application can be opened as a complete admission form before approval.</p></div><div className="filterPills">{[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['','All']].map(([v,l])=><button key={v} className={filter===v?'selected':''} onClick={()=>setFilter(v)}>{l}</button>)}</div></div><div className="tableToolbar"><div className="searchBox"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search name, Student ID or CNIC…"/></div><span className="resultCount">{rows.length} requests</span></div><div className="dataPanel"><div className="tableWrap"><table><thead><tr><th>Applicant</th><th>Student ID</th><th>Class</th><th>CNIC</th><th>Status</th><th>Review</th></tr></thead><tbody>{rows.map((x:any)=><tr key={x.id}><td><div className="tablePerson">{x.photo_url?<img className="requestThumb" src={x.photo_url} alt=""/>:<div className="personAvatar small">{String(x.full_name||'?').charAt(0).toUpperCase()}</div>}<div><strong>{x.full_name}</strong><small>Father: {x.father_name||'—'}</small></div></div></td><td><strong className="mono">{x.student_id||'—'}</strong></td><td>{classLabel(x.classes)}</td><td className="mono">{x.cnic||'Protected'}</td><td><Status value={x.status}/></td><td><button className="smallBtn" onClick={()=>setSelectedRequest(x)}>View full form</button></td></tr>)}</tbody></table>{!rows.length&&<Empty text="No requests match this filter."/>}</div></div></div>;
 }
 function RequestDetail({request,close,reviewRequest}:{request:any;close:()=>void;reviewRequest:(id:string,action:'approve'|'reject')=>Promise<void>}) {
- return <div className="modalBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}><section className="requestModal"><div className="modalHead"><div><p className="eyebrow">NPSD ADMISSION FORM</p><h2>{request.full_name}</h2><p>{request.student_id} · {classLabel(request.classes)}</p></div><button className="iconButton" onClick={close}><XCircle size={18}/></button></div><div className="admissionSheet"><div className="admissionIdentity">{request.photo_url?<img src={request.photo_url} alt="Student photo"/>:<div className="photoPlaceholder">PHOTO</div>}<div><span>Student ID / Roll No</span><strong>{request.student_id||'—'}</strong><span>Application Status</span><strong>{request.status}</strong></div></div><div className="detailGrid"><Detail l="Student Name" v={request.full_name}/><Detail l="Father Name" v={request.father_name}/><Detail l="Cast" v={request.cast}/><Detail l="Date of Birth" v={request.dob}/><Detail l="Gender" v={request.gender}/><Detail l="Class / Section" v={classLabel(request.classes)}/><Detail l="CNIC / B-Form" v={request.cnic||'Protected hash'}/><Detail l="Admission Session" v={request.admission_session}/><Detail l="Photo" v={request.photo_url?'Uploaded':'Not uploaded'}/><Detail l="Submitted" v={request.created_at?new Date(request.created_at).toLocaleString():'—'}/></div></div><div className="modalActions"><button className="secondary" onClick={()=>window.print()}>Print / Save PDF</button>{request.status==='pending'&&<><button className="rejectBtn" onClick={async()=>{await reviewRequest(request.id,'reject');close()}}>Reject</button><button className="approveBtn" onClick={async()=>{await reviewRequest(request.id,'approve');close()}}>Approve Student</button></>}<button className="smallBtn" onClick={close}>Close</button></div></section></div>;
+ return <div className="modalBackdrop" onMouseDown={e=>{if(e.target===e.currentTarget)close()}}><section className="requestModal"><div className="modalHead"><div><p className="eyebrow">NPSD ADMISSION FORM</p><h2>{request.full_name}</h2><p>{request.student_id} · {classLabel(request.classes)}</p></div><button className="iconButton" onClick={close}><XCircle size={18}/></button></div><div className="admissionSheet"><div className="admissionIdentity">{request.photo_url?<img src={request.photo_url} alt="Student photo"/>:<div className="photoPlaceholder">PHOTO</div>}<div><span>Student ID / Roll No</span><strong>{request.student_id||'—'}</strong><span>Application Status</span><strong>{request.status}</strong></div></div><div className="detailGrid"><Detail l="Student Name" v={request.full_name}/><Detail l="Father Name" v={request.father_name}/><Detail l="Cast" v={request.student_cast || request.cast}/><Detail l="Date of Birth" v={request.dob}/><Detail l="Gender" v={request.gender}/><Detail l="Class / Section" v={classLabel(request.classes)}/><Detail l="CNIC / B-Form" v={request.cnic||'Protected hash'}/><Detail l="Admission Session" v={request.admission_session}/><Detail l="Photo" v={request.photo_url?'Uploaded':'Not uploaded'}/><Detail l="Submitted" v={request.created_at?new Date(request.created_at).toLocaleString():'—'}/></div></div><div className="modalActions"><button className="secondary" onClick={()=>window.print()}>Print / Save PDF</button>{request.status==='pending'&&<><button className="rejectBtn" onClick={async()=>{await reviewRequest(request.id,'reject');close()}}>Reject</button><button className="approveBtn" onClick={async()=>{await reviewRequest(request.id,'approve');close()}}>Approve Student</button></>}<button className="smallBtn" onClick={close}>Close</button></div></section></div>;
 }
 function Detail({l,v}:{l:string;v:any}){return <div className="detailItem"><span>{l}</span><strong>{v||'—'}</strong></div>}
 
