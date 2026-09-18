@@ -23,10 +23,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
   }
 
-  const [requests, students, parents, classes, attendance, exams, results, announcements] = await Promise.all([
-    admin.from('access_requests').select('id,student_id,full_name,father_name,guardian_name,cast,dob,gender,cnic,cnic_hash,phone,city,admission_session,class_id,status,created_at,admin_note,photo_url,classes(name,section)').order('created_at', { ascending: false }),
+  const [requests, students, classes, attendance, exams, results, announcements] = await Promise.all([
+    admin.from('access_requests').select('id,student_id,full_name,father_name,guardian_name,student_cast,dob,gender,cnic,cnic_hash,phone,city,admission_session,class_id,status,created_at,admin_note,photo_url,classes(name,section)').order('created_at', { ascending: false }),
     admin.from('students').select('id,student_id,full_name,father_name,active,class_id,classes(name,section)').order('full_name'),
-    admin.from('parents').select('id,full_name,phone,approved').order('full_name'),
     admin.from('classes').select('id,name,section,academic_year').order('name').order('section'),
     admin.from('attendance').select('id,student_id,attendance_date,status').order('attendance_date', { ascending: false }).limit(100),
     admin.from('exams').select('id,name,exam_date,class_id,total_marks,published').order('exam_date', { ascending: false }).limit(100),
@@ -34,12 +33,12 @@ export async function GET(request: NextRequest) {
     admin.from('announcements').select('id,title,body,published,published_at,target_class_id,created_at').order('created_at', { ascending: false }).limit(100),
   ]);
 
-  const errors = [requests, students, parents, classes, attendance, exams, results, announcements]
+  const errors = [requests, students, classes, attendance, exams, results, announcements]
     .filter((x) => x.error)
     .map((x) => x.error?.message);
 
   return NextResponse.json({
-    requests: requests.data ?? [], students: students.data ?? [], parents: parents.data ?? [], classes: classes.data ?? [],
+    requests: requests.data ?? [], students: students.data ?? [], classes: classes.data ?? [],
     attendance: attendance.data ?? [], exams: exams.data ?? [], results: results.data ?? [], announcements: announcements.data ?? [],
     errors,
   });
