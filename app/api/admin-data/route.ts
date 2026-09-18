@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   }
 
   const [requests, students, parents, classes, attendance, exams, results, announcements] = await Promise.all([
-    admin.from('access_requests').select('id,student_id,full_name,father_name,guardian_name,dob,gender,phone,city,admission_session,class_id,status,created_at,admin_note,classes(name,section)').order('created_at', { ascending: false }),
+    admin.from('access_requests').select('id,student_id,full_name,father_name,guardian_name,cast,dob,gender,cnic_hash,phone,city,admission_session,class_id,status,created_at,admin_note,photo_url,classes(name,section)').order('created_at', { ascending: false }),
     admin.from('students').select('id,student_id,full_name,father_name,active,class_id,classes(name,section)').order('full_name'),
     admin.from('parents').select('id,full_name,phone,approved').order('full_name'),
     admin.from('classes').select('id,name,section,academic_year').order('name').order('section'),
