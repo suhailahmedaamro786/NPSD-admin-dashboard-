@@ -169,7 +169,6 @@ export async function POST(request: NextRequest) {
     // Re-link only when Supabase Auth confirmed that the user actually exists.
     // If the legacy FK is unhealthy, keep the student approved with user_id NULL
     // instead of blocking admission approval.
-    let loginLinked = false;
     if (userId) {
       const { error: linkError } = await admin
         .from('students')
@@ -177,7 +176,6 @@ export async function POST(request: NextRequest) {
         .eq('student_id', admission.student_id);
 
       if (!linkError) {
-        loginLinked = true;
         const { error: profileError } = await admin
           .from('profiles')
           .update({
