@@ -2,7 +2,9 @@
 -- Run this in Supabase SQL Editor once.
 
 alter table public.access_requests add column if not exists cast text;
+alter table public.access_requests add column if not exists cnic text;
 alter table public.students add column if not exists cast text;
+alter table public.students add column if not exists cnic text;
 alter table public.access_requests add column if not exists photo_url text;
 alter table public.students add column if not exists photo_url text;
 
@@ -34,17 +36,17 @@ begin
  if p_approve then
    insert into public.students(
      user_id,student_id,full_name,father_name,photo_url,class_id,active,dob,gender,cnic_hash,
-     guardian_cnic_hash,admission_session,cast
+     guardian_cnic_hash,admission_session,cast,cnic
    )
    values(
      r.auth_user_id,r.student_id,r.full_name,r.father_name,r.photo_url,r.class_id,true,r.dob,r.gender,
-     r.cnic_hash,r.guardian_cnic_hash,r.admission_session,r.cast
+     r.cnic_hash,r.guardian_cnic_hash,r.admission_session,r.cast,r.cnic
    )
    on conflict (student_id) do update set
      user_id=excluded.user_id,active=true,full_name=excluded.full_name,
      father_name=excluded.father_name,photo_url=excluded.photo_url,
      class_id=excluded.class_id,dob=excluded.dob,gender=excluded.gender,
-     cnic_hash=excluded.cnic_hash,admission_session=excluded.admission_session,cast=excluded.cast;
+     cnic_hash=excluded.cnic_hash,admission_session=excluded.admission_session,cast=excluded.cast,cnic=excluded.cnic;
 
    update public.profiles
    set full_name=r.full_name,role='student',approved=true,updated_at=now()
