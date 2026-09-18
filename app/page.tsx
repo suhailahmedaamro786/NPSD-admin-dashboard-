@@ -121,7 +121,7 @@ function Admin({ user }: { user: any }) {
 
       {busy ? <div className="loadingCard"><RefreshCw className="spin" size={22}/> Loading dashboard data…</div> : <>
         {tab === 'overview' && <Overview pending={pending} approved={approved} rejected={rejected} students={students.length} requests={requests} setTab={setTab} attendance={attendance} results={results} classes={classes} />}
-        {tab === 'requests' && <RequestView rows={filteredRequests} filter={filter} setFilter={setFilter} query={query} setQuery={setQuery} reviewRequest={reviewRequest} setSelectedRequest={setSelectedRequest} />{selectedRequest&&<RequestDetail request={selectedRequest} close={()=>setSelectedRequest(null)} reviewRequest={reviewRequest} />}}
+        {tab === 'requests' && <><RequestView rows={filteredRequests} filter={filter} setFilter={setFilter} query={query} setQuery={setQuery} reviewRequest={reviewRequest} setSelectedRequest={setSelectedRequest} />{selectedRequest&&<RequestDetail request={selectedRequest} close={()=>setSelectedRequest(null)} reviewRequest={reviewRequest} />}</>}
         {tab === 'students' && <DataTable title="Students" subtitle="Registered and approved students" rows={students.map((x) => ({ Student: x.full_name, 'Student ID': x.student_id, Father: x.father_name || '—', Class: classLabel(x.classes), Status: x.active === false ? 'Inactive' : 'Active' }))} />}
         {tab === 'classes' && <DataTable title="Classes" subtitle="Academic classes and sections" rows={classes.map((x) => ({ Class: x.name, Section: x.section, 'Academic Year': x.academic_year || '—' }))} />}
         {tab === 'teachers' && <TeacherView classes={classes} setError={setError} setNotice={setNotice} />}
