@@ -43,6 +43,7 @@ function Admin({ user }: { user: any }) {
   const [query, setQuery] = useState('');
   const [cardStudent, setCardStudent] = useState('');
   const [cardToken, setCardToken] = useState('');
+  const [dark, setDark] = useState(false);
 
   async function loadData(silent = false) {
     if (silent) setRefreshing(true); else setBusy(true);
@@ -97,7 +98,6 @@ function Admin({ user }: { user: any }) {
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={17} /> },
     { id: 'requests', label: 'Requests', icon: <UserCheck size={17} />, count: pending },
     { id: 'students', label: 'Students', icon: <GraduationCap size={17} />, count: students.length },
-    { id: 'parents', label: 'Parents', icon: <Users size={17} />, count: parents.length },
     { id: 'classes', label: 'Classes', icon: <BookOpen size={17} />, count: classes.length },
     { id: 'teachers', label: 'Teachers', icon: <Users size={17} /> },
     { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={17} /> },
@@ -107,7 +107,7 @@ function Admin({ user }: { user: any }) {
     { id: 'cards', label: 'Student Cards', icon: <ShieldCheck size={17} /> },
   ];
 
-  return <main className="appShell">
+  return <main className={`appShell ${dark ? 'themeDark' : ''}`}>
     <aside className="sidebar">
       <div className="brand"><div className="brandMark">N</div><div><strong>NPSD</strong><span>Admin Portal</span></div></div>
       <div className="sideLabel">WORKSPACE</div>
@@ -116,15 +116,14 @@ function Admin({ user }: { user: any }) {
     </aside>
 
     <section className="mainArea">
-      <header className="header"><div><p className="eyebrow">NOBLE PUBLIC SCHOOL DADU</p><h1>{nav.find((x) => x.id === tab)?.label || 'Dashboard'}</h1><p className="sub">Manage students, approvals, academics and communication.</p></div><div className="headerActions"><button className="iconButton" title="Refresh" onClick={() => void loadData(true)} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''}/></button><div className="adminAvatar">A</div><div className="adminInfo"><strong>Administrator</strong><span>{user.email}</span></div></div></header>
+      <header className="header"><div><p className="eyebrow">NOBLE PUBLIC SCHOOL DADU</p><h1>{nav.find((x) => x.id === tab)?.label || 'Dashboard'}</h1><p className="sub">Manage students, approvals, academics and communication.</p></div><div className="headerActions"><button className="iconButton" title={dark ? 'Light theme' : 'Dark theme'} onClick={() => setDark(v => !v)}>{dark ? '☀️' : '🌙'}</button><button className="iconButton" title="Refresh" onClick={() => void loadData(true)} disabled={refreshing}><RefreshCw size={17} className={refreshing ? 'spin' : ''}/></button><div className="adminAvatar">A</div><div className="adminInfo"><strong>Administrator</strong><span>{user.email}</span></div></div></header>
       {error && <div className="alert error"><XCircle size={18}/><span>{error}</span><button onClick={() => setError('')}>×</button></div>}
       {notice && <div className="alert success"><CheckCircle2 size={18}/><span>{notice}</span><button onClick={() => setNotice('')}>×</button></div>}
 
       {busy ? <div className="loadingCard"><RefreshCw className="spin" size={22}/> Loading dashboard data…</div> : <>
-        {tab === 'overview' && <Overview pending={pending} approved={approved} rejected={rejected} students={students.length} requests={requests} setTab={setTab} />}
+        {tab === 'overview' && <Overview pending={pending} approved={approved} rejected={rejected} students={students.length} requests={requests} setTab={setTab} attendance={attendance} results={results} classes={classes} />}
         {tab === 'requests' && <RequestView rows={filteredRequests} filter={filter} setFilter={setFilter} query={query} setQuery={setQuery} reviewRequest={reviewRequest} />}
         {tab === 'students' && <DataTable title="Students" subtitle="Registered and approved students" rows={students.map((x) => ({ Student: x.full_name, 'Student ID': x.student_id, Father: x.father_name || '—', Class: classLabel(x.classes), Status: x.active === false ? 'Inactive' : 'Active' }))} />}
-        {tab === 'parents' && <DataTable title="Parents" subtitle="Parent accounts and approval status" rows={parents.map((x) => ({ Name: x.full_name, Phone: x.phone || '—', Status: x.approved ? 'Approved' : 'Pending' }))} />}
         {tab === 'classes' && <DataTable title="Classes" subtitle="Academic classes and sections" rows={classes.map((x) => ({ Class: x.name, Section: x.section, 'Academic Year': x.academic_year || '—' }))} />}
         {tab === 'teachers' && <TeacherView classes={classes} setError={setError} setNotice={setNotice} />}
         {tab === 'attendance' && <DataTable title="Attendance" subtitle="Latest 100 attendance records" rows={attendance.map((x) => ({ Student: x.student_id, Date: x.attendance_date, Status: x.status }))} />}
@@ -137,14 +136,17 @@ function Admin({ user }: { user: any }) {
   </main>;
 }
 
-function Overview({ pending, approved, rejected, students, requests, setTab }: any) {
-  return <div className="content"><div className="statsGrid"><Stat icon={<UserCheck/>} label="Pending Requests" value={pending} tone="amber" /><Stat icon={<GraduationCap/>} label="Students" value={students} tone="blue" /><Stat icon={<CheckCircle2/>} label="Approved" value={approved} tone="green" /><Stat icon={<XCircle/>} label="Rejected" value={rejected} tone="red" /></div>
+function Overview({ pending, approved, rejected, students, requests, setTab, attendance, results, classes }: any) {
+  const present = attendance.filter((a:any)=>a.status==='present').length;
+  const attendanceRate = attendance.length ? Math.round((present / attendance.length) * 100) : 0;
+  const publishedResults = results.filter((r:any)=>r.published).length;
+  return <div className="content"><div className="statsGrid"><Stat icon={<UserCheck/>} label="Pending Requests" value={pending} tone="amber" /><Stat icon={<GraduationCap/>} label="Students" value={students} tone="blue" /><Stat icon={<CheckCircle2/>} label="Approved" value={approved} tone="green" /><Stat icon={<CalendarCheck/>} label="Attendance Rate" value={`${attendanceRate}%`} tone="green" /></div><div className="statsGrid analyticsGrid"><Stat icon={<BookOpen/>} label="Classes" value={classes.length} tone="blue" /><Stat icon={<CheckCircle2/>} label="Published Results" value={publishedResults} tone="green" /><Stat icon={<XCircle/>} label="Rejected Requests" value={rejected} tone="red" /><Stat icon={<Megaphone/>} label="Attendance Records" value={attendance.length} tone="amber" /></div>
     <div className="sectionGrid"><section className="panel"><div className="panelHead"><div><h2>Recent applications</h2><p>Latest student registration requests</p></div><button className="textBtn" onClick={() => setTab('requests')}>View all <ChevronRight size={15}/></button></div><div className="recentList">{requests.slice(0, 6).map((x: any) => <div className="recentRow" key={x.id}><div className="personAvatar">{String(x.full_name || '?').charAt(0).toUpperCase()}</div><div className="person"><strong>{x.full_name}</strong><span>{x.student_id || 'ID pending'} · {classLabel(x.classes)}</span></div><Status value={x.status}/></div>)}{!requests.length && <Empty text="No registration requests yet."/>}</div></section>
       <section className="panel quick"><div className="panelHead"><div><h2>Quick actions</h2><p>Common admin tasks</p></div></div><button onClick={() => setTab('requests')}><UserCheck/><span><strong>Review applications</strong><small>Approve or reject new requests</small></span><ChevronRight/></button><button onClick={() => setTab('cards')}><ShieldCheck/><span><strong>Issue student card</strong><small>Generate a digital card token</small></span><ChevronRight/></button><button onClick={() => setTab('announcements')}><Bell/><span><strong>Announcements</strong><small>Manage school communication</small></span><ChevronRight/></button></section></div></div>;
 }
 
 function RequestView({ rows, filter, setFilter, query, setQuery, reviewRequest }: any) {
-  return <div className="content"><div className="pageIntro"><div><h2>Registration requests</h2><p>Review applications submitted from the student portal.</p></div><div className="filterPills">{[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['','All']].map(([v,l]) => <button key={v} className={filter === v ? 'selected' : ''} onClick={() => setFilter(v)}>{l}</button>)}</div></div><div className="tableToolbar"><div className="searchBox"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, student ID, phone or city…" /></div><span className="resultCount">{rows.length} request{rows.length === 1 ? '' : 's'}</span></div><div className="dataPanel"><div className="tableWrap"><table><thead><tr><th>Applicant</th><th>Student ID</th><th>Class</th><th>Contact</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.map((x: any) => <tr key={x.id}><td><div className="tablePerson"><div className="personAvatar small">{String(x.full_name || '?').charAt(0).toUpperCase()}</div><div><strong>{x.full_name}</strong><small>{x.father_name || x.guardian_name || 'Guardian not provided'}</small></div></div></td><td><strong className="mono">{x.student_id || '—'}</strong></td><td>{classLabel(x.classes)}</td><td><strong>{x.phone || '—'}</strong><small>{x.city || ''}</small></td><td><Status value={x.status}/></td><td>{x.status === 'pending' ? <div className="rowActions"><button className="approveBtn" onClick={() => void reviewRequest(x.id, 'approve')}><CheckCircle2 size={14}/> Approve</button><button className="rejectBtn" onClick={() => void reviewRequest(x.id, 'reject')}><XCircle size={14}/> Reject</button></div> : <span className="muted">Reviewed</span>}</td></tr>)}</tbody></table>{!rows.length && <Empty text="No requests match this filter."/>}</div></div></div>;
+  return <div className="content"><div className="pageIntro"><div><h2>Registration requests</h2><p>Review applications submitted from the student portal.</p></div><div className="filterPills">{[['pending','Pending'],['approved','Approved'],['rejected','Rejected'],['','All']].map(([v,l]) => <button key={v} className={filter === v ? 'selected' : ''} onClick={() => setFilter(v)}>{l}</button>)}</div></div><div className="tableToolbar"><div className="searchBox"><Search size={17}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, student ID, phone or city…" /></div><span className="resultCount">{rows.length} request{rows.length === 1 ? '' : 's'}</span></div><div className="dataPanel"><div className="tableWrap"><table><thead><tr><th>Applicant</th><th>Student ID</th><th>Class</th><th>Contact</th><th>Status</th><th>Action</th></tr></thead><tbody>{rows.map((x: any) => <tr key={x.id}><td><div className="tablePerson"><div className="personAvatar small">{String(x.full_name || '?').charAt(0).toUpperCase()}</div><div><strong>{x.full_name}</strong><small>{x.father_name || x.guardian_name || 'Guardian not provided'}</small></div></div></td><td><strong className="mono">{x.student_id || '—'}</strong></td><td>{classLabel(x.classes)}</td><td><strong>{x.phone || '—'}</strong><small>{x.city || ''}</small></td><td><Status value={x.status}/></td><td>{x.status === 'pending' ? <div className="rowActions"><button className="approveBtn" onClick={() => void reviewRequest(x.id, 'approve')}><CheckCircle2 size={14}/> Approve</button><button className="rejectBtn" onClick={() => void reviewRequest(x.id, 'reject')}><XCircle size={14}/> Reject</button></div> : <button className="smallBtn" onClick={() => window.print()}>View / Print Details</button>}</td></tr>)}</tbody></table>{!rows.length && <Empty text="No requests match this filter."/>}</div></div></div>;
 }
 
 function DataTable({ title, subtitle, rows, actions }: { title: string; subtitle: string; rows: any[]; actions?: (row: any) => React.ReactNode }) {
