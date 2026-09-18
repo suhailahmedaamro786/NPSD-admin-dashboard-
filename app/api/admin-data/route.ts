@@ -121,16 +121,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ request: updated });
     }
 
-    let userId: string | null = null;
-
-    if (admission.auth_user_id) {
-      const { data: authUser } = await admin.auth.admin.getUserById(admission.auth_user_id);
-      if (authUser?.user) userId = authUser.user.id;
-    }
-
-    // IMPORTANT: create/update the student row with user_id=NULL first.
-    // This prevents a stale/deleted auth user reference from tripping the
-    // students_user_id_fkey constraint during admission approval.
+    // Admission approval must not depend on the optional students.user_id FK.
+    // Student login is verified from access_requests.auth_user_id by the
+    // Student Portal, so the student record can safely keep user_id NULL.
     const studentPayload = {
       user_id: null,
       student_id: admission.student_id,
@@ -152,7 +145,7 @@ export async function POST(request: NextRequest) {
       email: admission.email,
     };
 
-    // Clear any legacy user_id on an existing student before the upsert.
+    // Remove any legacy link first, then upsert without a user_id.
     const { error: clearUserError } = await admin
       .from('students')
       .update({ user_id: null })
@@ -165,30 +158,6 @@ export async function POST(request: NextRequest) {
       .upsert(studentPayload, { onConflict: 'student_id' });
 
     if (studentError) throw studentError;
-
-    // Re-link only when Supabase Auth confirmed that the user actually exists.
-    // If the legacy FK is unhealthy, keep the student approved with user_id NULL
-    // instead of blocking admission approval.
-    if (userId) {
-      const { error: linkError } = await admin
-        .from('students')
-        .update({ user_id: userId })
-        .eq('student_id', admission.student_id);
-
-      if (!linkError) {
-        const { error: profileError } = await admin
-          .from('profiles')
-          .update({
-            full_name: admission.full_name,
-            role: 'student',
-            approved: true,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', userId);
-
-        if (profileError) throw profileError;
-      }
-    }
 
     const { data: updated, error: updateError } = await admin
       .from('access_requests')
