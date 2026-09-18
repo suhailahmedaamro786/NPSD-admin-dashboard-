@@ -126,3 +126,24 @@ from generate_series(1,12) as n
 where not exists (
   select 1 from public.classes c where c.name='Class ' || n and c.academic_year='2026-27'
 );
+
+-- Compatibility migration for existing students tables.
+-- Safe to run on an existing database; adds admission fields required by approval RPC.
+alter table public.students add column if not exists guardian_name text;
+alter table public.students add column if not exists dob date;
+alter table public.students add column if not exists gender text;
+alter table public.students add column if not exists cnic_hash text;
+alter table public.students add column if not exists guardian_cnic_hash text;
+alter table public.students add column if not exists phone text;
+alter table public.students add column if not exists whatsapp text;
+alter table public.students add column if not exists email text;
+alter table public.students add column if not exists address text;
+alter table public.students add column if not exists city text;
+alter table public.students add column if not exists admission_session text;
+alter table public.students add column if not exists admission_date date;
+alter table public.students add column if not exists previous_school text;
+alter table public.students add column if not exists previous_class text;
+alter table public.students add column if not exists emergency_name text;
+alter table public.students add column if not exists emergency_phone text;
+alter table public.students add column if not exists relationship text;
+alter table public.students add column if not exists notes text;
