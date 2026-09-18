@@ -65,10 +65,28 @@ function Admin({ user }: { user: any }) {
 
   async function reviewRequest(id: string, action: 'approve' | 'reject') {
     setNotice(''); setError('');
-    const { data, error } = await supabase().rpc('approve_access_request', { p_request_id: id, p_approve: action === 'approve', p_note: null });
-    if (error) { setError(error.message); return; }
-    setNotice(`Request ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
-    await loadData(true);
+    try {
+      const { data: sessionData } = await supabase().auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('Admin session expired. Please sign in again.');
+
+      const response = await fetch('/api/admin-data', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ requestId: id, action }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Unable to review admission request.');
+
+      setNotice(`Request ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
+      await loadData(true);
+    } catch (e: any) {
+      setError(e?.message || 'Unable to review admission request.');
+    }
   }
 
   async function issueCard(studentId: string) {
