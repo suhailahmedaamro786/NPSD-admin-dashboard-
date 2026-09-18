@@ -54,7 +54,7 @@ function Admin({ user }: { user: any }) {
       const response = await fetch('/api/admin-data', { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Unable to load admin data.');
-      setRequests(payload.requests || []); setStudents(payload.students || []); setParents(payload.parents || []); setClasses(payload.classes || []);
+      setRequests(payload.requests || []); setStudents(payload.students || []); setParents(payload.parents || []); setClasses((payload.classes || []).slice().sort((a: ClassRow, b: ClassRow) => { const n = (v: string) => { const m = String(v || '').match(/(\\d+)/); return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER; }; return n(a.name) - n(b.name) || String(a.section || '').localeCompare(String(b.section || '')); }));
       setAttendance(payload.attendance || []); setExams(payload.exams || []); setResults(payload.results || []); setAnnouncements(payload.announcements || []);
       if (payload.errors?.length) setError(payload.errors.join(' • '));
     } catch (e: any) { setError(e?.message || 'Unable to load dashboard.'); }
