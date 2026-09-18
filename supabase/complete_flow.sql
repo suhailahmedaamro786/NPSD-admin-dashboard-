@@ -70,7 +70,7 @@ declare r public.access_requests; begin
  if not found then raise exception 'Request not found'; end if;
  if p_approve then
    insert into public.students(user_id,student_id,full_name,father_name,guardian_name,photo_url,class_id,active,dob,gender,cnic_hash,guardian_cnic_hash,phone,whatsapp,email,address,city,admission_session,admission_date,previous_school,previous_class,emergency_name,emergency_phone,relationship,notes)
-   values(r.auth_user_id,r.student_id,r.full_name,r.father_name,r.guardian_name,r.photo_url,r.class_id,true,r.dob,r.gender,r.cnic_hash,r.guardian_cnic_hash,r.phone,r.whatsapp,r.email,r.address,r.city,r.admission_session,r.admission_date,r.previous_school,r.previous_class,r.emergency_name,r.emergency_phone,r.relationship,r.notes)
+   values(r.auth_user_id,r.student_id,r.full_name,r.father_name,r.guardian_name,r.photo_url,r.class_id,true,r.dob,r.gender,r.cnic_hash,r.guardian_cnic_hash,r.phone,r.whatsapp,r.email,coalesce(nullif(trim(r.address),''),'Not provided'),coalesce(nullif(trim(r.city),''),'Not provided'),r.admission_session,r.admission_date,r.previous_school,r.previous_class,coalesce(nullif(trim(r.emergency_name),''),'Not provided'),coalesce(nullif(trim(r.emergency_phone),''),'Not provided'),coalesce(nullif(trim(r.relationship),''),'Not provided'),r.notes)
    on conflict (student_id) do update set user_id=excluded.user_id,active=true,full_name=excluded.full_name,class_id=excluded.class_id;
    update public.profiles set full_name=r.full_name,role='student',approved=true,updated_at=now() where id=r.auth_user_id;
    update public.access_requests set status='approved',admin_note=p_note,reviewed_by=auth.uid(),reviewed_at=now(),updated_at=now() where id=r.id returning * into r;
@@ -83,33 +83,15 @@ declare r public.access_requests; begin
 end; $$;
 grant execute on function public.approve_access_request(uuid,boolean,text) to authenticated;
 
--- Compatibility wrapper: supports the admin UI RPC signature p_action + p_request_id.
 create or replace function public.approve_access_request(p_action text, p_request_id uuid)
-returns public.access_requests
-language sql
-security definer
-set search_path=public
-as $$
-  select public.approve_access_request(
-    p_request_id,
-    lower(trim(p_action)) = 'approve',
-    null
-  );
+returns public.access_requests language sql security definer set search_path=public as $$
+ select public.approve_access_request(p_request_id,lower(trim(p_action))='approve',null);
 $$;
 grant execute on function public.approve_access_request(text,uuid) to authenticated;
 
--- Keep compatibility with clients that send the arguments in request-id/action order.
 create or replace function public.approve_access_request(p_request_id uuid, p_action text)
-returns public.access_requests
-language sql
-security definer
-set search_path=public
-as $$
-  select public.approve_access_request(
-    p_request_id,
-    lower(trim(p_action)) = 'approve',
-    null
-  );
+returns public.access_requests language sql security definer set search_path=public as $$
+ select public.approve_access_request(p_request_id,lower(trim(p_action))='approve',null);
 $$;
 grant execute on function public.approve_access_request(uuid,text) to authenticated;
 
@@ -123,13 +105,9 @@ create policy npsd_classes_public_read on public.classes for select to anon usin
 insert into public.classes(name,section,academic_year)
 select 'Class ' || n, 'A', '2026-27'
 from generate_series(1,12) as n
-where not exists (
-  select 1 from public.classes c where c.name='Class ' || n and c.academic_year='2026-27'
-);
-
+where not exists (select 1 from public.classes c where c.name='Class ' || n and c.academic_year='2026-27');
 
 -- Compatibility migration for existing students tables.
--- Run this block as-is in Supabase SQL Editor.
 alter table public.students add column if not exists guardian_name text;
 alter table public.students add column if not exists dob date;
 alter table public.students add column if not exists gender text;
@@ -148,3 +126,13 @@ alter table public.students add column if not exists emergency_name text;
 alter table public.students add column if not exists emergency_phone text;
 alter table public.students add column if not exists relationship text;
 alter table public.students add column if not exists notes text;
+
+-- Repair existing pending requests that predate the complete admission form.
+update public.access_requests
+set
+ address = coalesce(nullif(trim(address), ''), 'Not provided'),
+ city = coalesce(nullif(trim(city), ''), 'Not provided'),
+ emergency_name = coalesce(nullif(trim(emergency_name), ''), 'Not provided'),
+ emergency_phone = coalesce(nullif(trim(emergency_phone), ''), 'Not provided'),
+ relationship = coalesce(nullif(trim(relationship), ''), 'Not provided')
+where address is null or city is null or emergency_name is null or emergency_phone is null or relationship is null;
