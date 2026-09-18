@@ -100,8 +100,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: requestError?.message || 'Admission request not found.' }, { status: 404 });
     }
 
-    if (admission.status !== 'pending') {
+    if (admission.status !== 'pending' && action === 'reject') {
       return NextResponse.json({ error: `Request is already ${admission.status}.` }, { status: 409 });
+    }
+
+    // Re-approve/sync an already-approved admission: restore the profile
+    // approval and safely link the existing Auth user to the student row.
+    if (admission.status === 'approved' && action === 'approve') {
+      if (!admission.auth_user_id) throw new Error('Approved request has no Auth user.');
+      const { data: authUser, error: authError } = await admin.auth.admin.getUserById(admission.auth_user_id);
+      if (authError || !authUser?.user) throw new Error('The student Auth account no longer exists.');
+      const { error: profileError } = await admin.from('profiles').update({
+        full_name: admission.full_name, role: 'student', approved: true, updated_at: new Date().toISOString()
+      }).eq('id', admission.auth_user_id);
+      if (profileError) throw profileError;
+      const { error: linkError } = await admin.from('students').update({ user_id: admission.auth_user_id }).eq('student_id', admission.student_id);
+      if (linkError) throw linkError;
+      return NextResponse.json({ repaired: true, student_id: admission.student_id });
     }
 
     if (action === 'reject') {
