@@ -6,7 +6,7 @@ import { Bell, BookOpen, CalendarCheck, CheckCircle2, ChevronRight, GraduationCa
 import { supabase } from '../lib/supabase';
 
 const ADMIN_EMAIL = 'suhailahmedaamro786@gmail.com';
-type TabName = 'overview' | 'requests' | 'students' | 'parents' | 'classes' | 'attendance' | 'exams' | 'results' | 'announcements' | 'cards';
+type TabName = 'overview' | 'requests' | 'students' | 'parents' | 'classes' | 'teachers' | 'attendance' | 'exams' | 'results' | 'announcements' | 'cards';
 type Student = { id: string; student_id: string; full_name: string; father_name?: string | null; active?: boolean; class_id?: string | null; classes?: { name: string; section: string }[] | { name: string; section: string } | null };
 type ClassRow = { id: string; name: string; section: string; academic_year?: string | null };
 
@@ -99,6 +99,7 @@ function Admin({ user }: { user: any }) {
     { id: 'students', label: 'Students', icon: <GraduationCap size={17} />, count: students.length },
     { id: 'parents', label: 'Parents', icon: <Users size={17} />, count: parents.length },
     { id: 'classes', label: 'Classes', icon: <BookOpen size={17} />, count: classes.length },
+    { id: 'teachers', label: 'Teachers', icon: <Users size={17} /> },
     { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={17} /> },
     { id: 'exams', label: 'Exams', icon: <BookOpen size={17} /> },
     { id: 'results', label: 'Results', icon: <CheckCircle2 size={17} /> },
@@ -125,6 +126,7 @@ function Admin({ user }: { user: any }) {
         {tab === 'students' && <DataTable title="Students" subtitle="Registered and approved students" rows={students.map((x) => ({ Student: x.full_name, 'Student ID': x.student_id, Father: x.father_name || '—', Class: classLabel(x.classes), Status: x.active === false ? 'Inactive' : 'Active' }))} />}
         {tab === 'parents' && <DataTable title="Parents" subtitle="Parent accounts and approval status" rows={parents.map((x) => ({ Name: x.full_name, Phone: x.phone || '—', Status: x.approved ? 'Approved' : 'Pending' }))} />}
         {tab === 'classes' && <DataTable title="Classes" subtitle="Academic classes and sections" rows={classes.map((x) => ({ Class: x.name, Section: x.section, 'Academic Year': x.academic_year || '—' }))} />}
+        {tab === 'teachers' && <TeacherView classes={classes} setError={setError} setNotice={setNotice} />}
         {tab === 'attendance' && <DataTable title="Attendance" subtitle="Latest 100 attendance records" rows={attendance.map((x) => ({ Student: x.student_id, Date: x.attendance_date, Status: x.status }))} />}
         {tab === 'exams' && <DataTable title="Exams" subtitle="Exam schedule and publishing" rows={exams.map((x) => ({ Name: x.name, Date: x.exam_date, 'Total Marks': x.total_marks, Published: x.published ? 'Yes' : 'No' }))} actions={(x) => <button className="smallBtn" onClick={() => { const row = exams.find((e) => e.name === x.Name && e.exam_date === x.Date); if (row) void togglePublished('exams', row.id, row.published); }}>{x.Published === 'Yes' ? 'Unpublish' : 'Publish'}</button>} />}
         {tab === 'results' && <DataTable title="Results" subtitle="Student results and publishing" rows={results.map((x) => ({ Student: x.student_id, Subject: x.subject, Marks: `${x.marks_obtained ?? x.obtained ?? '—'} / ${x.total_marks ?? x.total ?? '—'}`, Grade: x.grade || '—', Published: x.published ? 'Yes' : 'No' }))} />}
@@ -148,6 +150,21 @@ function RequestView({ rows, filter, setFilter, query, setQuery, reviewRequest }
 function DataTable({ title, subtitle, rows, actions }: { title: string; subtitle: string; rows: any[]; actions?: (row: any) => React.ReactNode }) {
   const columns = Object.keys(rows[0] || { Name: '' });
   return <div className="content"><div className="pageIntro"><div><h2>{title}</h2><p>{subtitle}</p></div></div><div className="dataPanel"><div className="tableWrap"><table><thead><tr>{columns.map((c) => <th key={c}>{c}</th>)}{actions && <th>Action</th>}</tr></thead><tbody>{rows.map((row, i) => <tr key={row.id || i}>{columns.map((c) => <td key={c}>{c === 'Status' || c === 'Published' ? <Status value={String(row[c])} /> : String(row[c] ?? '—')}</td>)}{actions && <td>{actions(row)}</td>}</tr>)}</tbody></table>{!rows.length && <Empty text={`No ${title.toLowerCase()} found.`}/>}</div></div></div>;
+}
+
+function TeacherView({ classes, setError, setNotice }: { classes: ClassRow[]; setError: (v: string) => void; setNotice: (v: string) => void }) {
+ const [rows,setRows]=useState<any[]>([]); const [saving,setSaving]=useState(false);
+ const [form,setForm]=useState({full_name:'',employee_id:'',cnic:'',phone:'',email:'',password:'',department:'',class_id:'',subject:'',is_class_teacher:false});
+ const load=async()=>{const {data:s}=await supabase().auth.getSession();const t=s.session?.access_token;if(!t)return;const r=await fetch('/api/admin-teachers',{headers:{Authorization:'Bearer '+t},cache:'no-store'});const p=await r.json();if(!r.ok)return setError(p.error||'Unable to load teachers');setRows(p.teachers||[])};
+ useEffect(()=>{void load()},[]);
+ async function submit(e:React.FormEvent){e.preventDefault();setSaving(true);setError('');setNotice('');try{const {data:s}=await supabase().auth.getSession();const t=s.session?.access_token;if(!t)throw new Error('Admin session expired');const r=await fetch('/api/admin-teachers',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t},body:JSON.stringify(form)});const p=await r.json();if(!r.ok)throw new Error(p.error||'Unable to create teacher');setNotice('Teacher account created successfully.');setForm({full_name:'',employee_id:'',cnic:'',phone:'',email:'',password:'',department:'',class_id:'',subject:'',is_class_teacher:false});await load()}catch(e:any){setError(e?.message||'Unable to create teacher')}finally{setSaving(false)}}
+ return <div className="content"><div className="pageIntro"><div><h2>Teacher Management</h2><p>Create secure teacher login accounts and assign class/subject.</p></div></div><div className="sectionGrid"><section className="panel"><div className="panelHead"><div><h2>Add Teacher</h2><p>Password is handled by Supabase Auth.</p></div></div><form className="teacherForm" onSubmit={submit}>
+ <input placeholder="Full name" value={form.full_name} onChange={e=>setForm({...form,full_name:e.target.value})} required/><input placeholder="Employee ID" value={form.employee_id} onChange={e=>setForm({...form,employee_id:e.target.value})} required/>
+ <input placeholder="CNIC (13 digits)" inputMode="numeric" maxLength={13} value={form.cnic} onChange={e=>setForm({...form,cnic:e.target.value.replace(/\D/g,'').slice(0,13)})}/><input placeholder="Phone (11 digits)" inputMode="numeric" maxLength={11} value={form.phone} onChange={e=>setForm({...form,phone:e.target.value.replace(/\D/g,'').slice(0,11)})}/>
+ <input type="email" placeholder="Teacher email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required/><input type="password" minLength={8} placeholder="Temporary password (8+)" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required/>
+ <input placeholder="Department" value={form.department} onChange={e=>setForm({...form,department:e.target.value})}/><select value={form.class_id} onChange={e=>setForm({...form,class_id:e.target.value})}><option value="">Assign class (optional)</option>{classes.map(c=><option key={c.id} value={c.id}>{c.name} — {c.section}</option>)}</select>
+ <input placeholder="Subject" value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}/><label className="checkLine"><input type="checkbox" checked={form.is_class_teacher} onChange={e=>setForm({...form,is_class_teacher:e.target.checked})}/> Class teacher</label>
+ <button className="primaryBtn" disabled={saving}>{saving?'Creating…':'Create Teacher Account'}</button></form></section><section className="panel"><div className="panelHead"><div><h2>Teacher Accounts</h2><p>{rows.length} registered</p></div></div><div className="recentList">{rows.map(t=><div className="recentRow" key={t.id}><div className="personAvatar">{String(t.full_name||'?').charAt(0).toUpperCase()}</div><div className="person"><strong>{t.full_name}</strong><span>{t.employee_id} · {t.email}</span><small>{t.class_name||'No class'}{t.subject?' · '+t.subject:''}</small></div><Status value={t.active===false?'Inactive':'Active'}/></div>)}{!rows.length&&<Empty text="No teachers created yet."/>}</div></section></div></div>;
 }
 
 function CardView({ students, cardStudent, setCardStudent, issueCard, cardToken }: any) {
